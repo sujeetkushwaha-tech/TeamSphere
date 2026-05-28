@@ -45,11 +45,6 @@ MONGO_URI=mongodb://localhost:27017/teamsphere
 JWT_ACCESS_SECRET=your_access_secret_here
 JWT_REFRESH_SECRET=your_refresh_secret_here
 NODE_ENV=development
-ACCESS_TOKEN_EXPIRE=15m
-REFRESH_TOKEN_EXPIRE=7d
-SMTP_USER=your_email@gmail.com
-SMTP_PASS=your_app_password
-SMTP_FROM=TeamSphere <your_email@gmail.com>
 ```
 
 ### 3. Seed the database (optional but recommended)
