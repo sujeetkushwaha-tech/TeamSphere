@@ -1,0 +1,1025 @@
+{
+  "info": {
+    "_postman_id": "teamsphere-api-v1",
+    "name": "TeamSphere API",
+    "description": "Complete API collection for TeamSphere — a multi-tenant SaaS Project Management System (MERN stack).\n\n## Quick Start\n1. Run **[Auth] Register Tenant** to create your first tenant + admin user\n2. Tokens and IDs are auto-saved to collection variables\n3. All protected routes inherit the Bearer token automatically\n\n## Headers Required\n- **Authorization**: Bearer `{{accessToken}}` — auto-injected by collection auth\n- **X-Tenant-ID**: `{{tenantId}}` — required on all tenant-scoped routes (NOT on super-admin routes)\n\n## Roles\n- `super-admin` — Platform level; manages tenants only\n- `admin` — Full access within tenant\n- `manager` — Create/manage projects and tasks\n- `employee` — View; can only update task status\n\n## Response Envelope\nAll responses: `{ success, message, data, [pagination] }`",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const expiry = pm.collectionVariables.get('tokenExpiry');",
+          "const accessToken = pm.collectionVariables.get('accessToken');",
+          "if (accessToken && expiry && Date.now() > parseInt(expiry) - 60000) {",
+          "    const refreshToken = pm.collectionVariables.get('refreshToken');",
+          "    if (!refreshToken) return;",
+          "    pm.sendRequest({",
+          "        url: pm.collectionVariables.get('baseUrl') + '/auth/refresh',",
+          "        method: 'POST',",
+          "        header: [{ key: 'Content-Type', value: 'application/json' }],",
+          "        body: { mode: 'raw', raw: JSON.stringify({ refreshToken }) }",
+          "    }, function(err, res) {",
+          "        if (!err && res.code === 200) {",
+          "            const b = res.json();",
+          "            if (b.success) {",
+          "                pm.collectionVariables.set('accessToken', b.data.accessToken);",
+          "                pm.collectionVariables.set('refreshToken', b.data.refreshToken);",
+          "                pm.collectionVariables.set('tokenExpiry', String(Date.now() + 14 * 60 * 1000));",
+          "            }",
+          "        }",
+          "    });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl",      "value": "http://localhost:8000/api/v1", "type": "string" },
+    { "key": "accessToken",  "value": "", "type": "string" },
+    { "key": "refreshToken", "value": "", "type": "string" },
+    { "key": "tokenExpiry",  "value": "", "type": "string" },
+    { "key": "tenantId",     "value": "", "type": "string" },
+    { "key": "userId",       "value": "", "type": "string" },
+    { "key": "memberId",     "value": "", "type": "string" },
+    { "key": "projectId",    "value": "", "type": "string" },
+    { "key": "taskId",       "value": "", "type": "string" },
+    { "key": "commentId",    "value": "", "type": "string" },
+    { "key": "roleId",       "value": "", "type": "string" },
+    { "key": "permissionId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "description": "Authentication — register, login, token refresh, profile, logout",
+      "item": [
+        {
+          "name": "Register Tenant",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "if (pm.response.code === 201) {",
+                "    const b = pm.response.json();",
+                "    if (b.success && b.data) {",
+                "        pm.collectionVariables.set('accessToken', b.data.accessToken);",
+                "        pm.collectionVariables.set('refreshToken', b.data.refreshToken);",
+                "        pm.collectionVariables.set('tokenExpiry', String(Date.now() + 14 * 60 * 1000));",
+                "        pm.collectionVariables.set('tenantId', b.data.tenant.id);",
+                "        pm.collectionVariables.set('userId', b.data.user.id);",
+                "        console.log('Registered. tenantId:', b.data.tenant.id, 'userId:', b.data.user.id);",
+                "    }",
+                "    pm.test('Tenant registered', () => pm.expect(b.success).to.be.true);",
+                "}"
+              ]
+            }
+          }],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantName\": \"Acme Corp\",\n  \"slug\": \"acme-corp\",\n  \"tenantEmail\": \"contact@acme.com\",\n  \"adminName\": \"John Admin\",\n  \"adminEmail\": \"admin@acme.com\",\n  \"adminPassword\": \"Admin@123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register"]
+            },
+            "description": "Creates a new tenant + initial admin user in one step.\n\n**Body:**\n- `tenantName` — Organization display name\n- `slug` — Unique URL-safe slug (e.g. `acme-corp`)\n- `tenantEmail` — Organization contact email\n- `adminName` / `adminEmail` / `adminPassword` — Admin credentials\n\nAuto-saves `accessToken`, `refreshToken`, `tenantId`, `userId` to collection variables."
+          }
+        },
+        {
+          "name": "Login (Tenant User)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "if (pm.response.code === 200) {",
+                "    const b = pm.response.json();",
+                "    if (b.success && b.data) {",
+                "        pm.collectionVariables.set('accessToken', b.data.accessToken);",
+                "        pm.collectionVariables.set('refreshToken', b.data.refreshToken);",
+                "        pm.collectionVariables.set('tokenExpiry', String(Date.now() + 14 * 60 * 1000));",
+                "        if (b.data.tenant) pm.collectionVariables.set('tenantId', b.data.tenant.id);",
+                "        pm.collectionVariables.set('userId', b.data.user.id);",
+                "        console.log('Login OK. role:', b.data.user.role, 'userId:', b.data.user.id);",
+                "    }",
+                "    pm.test('Login successful', () => pm.expect(b.success).to.be.true);",
+                "}"
+              ]
+            }
+          }],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-ID", "value": "{{tenantId}}", "description": "Required for tenant users" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@acme.com\",\n  \"password\": \"Admin@123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Login as a tenant user. **Must include** `X-Tenant-ID` header.\n\nAuto-saves tokens, tenantId, and userId."
+          }
+        },
+        {
+          "name": "Login (Super Admin)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "if (pm.response.code === 200) {",
+                "    const b = pm.response.json();",
+                "    if (b.success && b.data) {",
+                "        pm.collectionVariables.set('accessToken', b.data.accessToken);",
+                "        pm.collectionVariables.set('refreshToken', b.data.refreshToken);",
+                "        pm.collectionVariables.set('tokenExpiry', String(Date.now() + 14 * 60 * 1000));",
+                "        pm.collectionVariables.set('userId', b.data.user.id);",
+                "        console.log('Super admin login OK');",
+                "    }",
+                "}"
+              ]
+            }
+          }],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"superadmin@teamsphere.com\",\n  \"password\": \"SuperAdmin@123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Login as a super admin. **Do NOT include** `X-Tenant-ID` header — its absence signals a super-admin login.\n\nSuper admin is created via: `npm run seed`"
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "if (pm.response.code === 200) {",
+                "    const b = pm.response.json();",
+                "    if (b.success && b.data) {",
+                "        pm.collectionVariables.set('accessToken', b.data.accessToken);",
+                "        pm.collectionVariables.set('refreshToken', b.data.refreshToken);",
+                "        pm.collectionVariables.set('tokenExpiry', String(Date.now() + 14 * 60 * 1000));",
+                "        console.log('Tokens refreshed');",
+                "    }",
+                "}"
+              ]
+            }
+          }],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "refresh"]
+            },
+            "description": "Exchange a valid refresh token for new access + refresh tokens. Refresh tokens are rotated on every use.\n\nThe collection pre-request script calls this automatically when the access token is about to expire."
+          }
+        },
+        {
+          "name": "Get Current User (Me)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "me"]
+            },
+            "description": "Returns the currently authenticated user with tenant populated. Excludes password and refreshToken."
+          }
+        },
+        {
+          "name": "Logout",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "if (pm.response.code === 200) {",
+                "    pm.collectionVariables.set('accessToken', '');",
+                "    pm.collectionVariables.set('refreshToken', '');",
+                "    pm.collectionVariables.set('tokenExpiry', '');",
+                "    console.log('Logged out — tokens cleared');",
+                "}"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": { "mode": "raw", "raw": "" },
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "logout"]
+            },
+            "description": "Clears the refresh token from the database. Test script also clears all token variables from the collection."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tenant Management [Super Admin]",
+      "description": "Platform-level tenant CRUD. All endpoints require super-admin role and Bearer token. Do NOT include X-Tenant-ID.",
+      "item": [
+        {
+          "name": "List All Tenants",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tenants?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["tenants"],
+              "query": [
+                { "key": "page",   "value": "1" },
+                { "key": "limit",  "value": "20" },
+                { "key": "status", "value": "active", "disabled": true, "description": "active | inactive | suspended" }
+              ]
+            },
+            "description": "Paginated list of all tenants. Super admin only.\n\n**Query Params:** `page`, `limit`, `status` (optional filter)"
+          }
+        },
+        {
+          "name": "Get Tenant by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tenants/{{tenantId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["tenants", "{{tenantId}}"]
+            },
+            "description": "Fetch a single tenant by MongoDB ObjectId."
+          }
+        },
+        {
+          "name": "Create Tenant",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Beta Corp\",\n  \"adminName\": \"Beta Admin\",\n  \"adminEmail\": \"admin@betacorp.com\",\n  \"adminPassword\": \"BetaAdmin@123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tenants",
+              "host": ["{{baseUrl}}"],
+              "path": ["tenants"]
+            },
+            "description": "Manually provision a tenant + admin user. Super admin only.\n\n**Required:** `name`, `adminName`, `adminEmail`, `adminPassword`\n\nReturns both `tenant` and `admin` objects."
+          }
+        },
+        {
+          "name": "Update Tenant",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Acme Corporation\",\n  \"status\": \"active\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tenants/{{tenantId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["tenants", "{{tenantId}}"]
+            },
+            "description": "Update tenant `name` or `status` (`active` | `inactive` | `suspended`)."
+          }
+        },
+        {
+          "name": "Delete Tenant (Soft)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tenants/{{tenantId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["tenants", "{{tenantId}}"]
+            },
+            "description": "Soft-delete a tenant. Sets `isDeleted: true`, `status: inactive`. Record is retained in database."
+          }
+        }
+      ]
+    },
+    {
+      "name": "User Management",
+      "description": "Manage users within the current tenant. All endpoints need X-Tenant-ID header.",
+      "item": [
+        {
+          "name": "List Users",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Tenant-ID", "value": "{{tenantId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/users?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["users"],
+              "query": [
+                { "key": "page",   "value": "1" },
+                { "key": "limit",  "value": "20" },
+                { "key": "status", "value": "active",   "disabled": true, "description": "active | inactive | invited" },
+                { "key": "role",   "value": "employee",  "disabled": true, "description": "admin | manager | employee" }
+              ]
+            },
+            "description": "List all users in the current tenant (scoped by X-Tenant-ID).\n\n**Query Params:** `page`, `limit`, `status`, `role`"
+          }
+        },
+        {
+          "name": "Get User by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Tenant-ID", "value": "{{tenantId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}"]
+            },
+            "description": "Fetch a single user by ID within the current tenant."
+          }
+        },
+        {
+          "name": "Invite User",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "if (pm.response.code === 201) {",
+                "    const b = pm.response.json();",
+                "    if (b.success && b.data && b.data.user) {",
+                "        pm.collectionVariables.set('memberId', b.data.user.id);",
+                "        console.log('memberId saved:', b.data.user.id);",
+                "    }",
+                "}"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-ID",  "value": "{{tenantId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jane Developer\",\n  \"email\": \"jane@acme.com\",\n  \"role\": \"employee\",\n  \"password\": \"Employee@123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/invite",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "invite"]
+            },
+            "description": "Invite (create) a new user in the tenant. Admin only.\n\n**Required:** `name`, `email`, `role` (`admin` | `manager` | `employee`)\n\n**Optional:** `password` — If omitted, a random password is generated and status is set to `invited`.\n\nAuto-saves the new user ID to `{{memberId}}`."
+          }
+        },
+        {
+          "name": "Update User",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-ID",  "value": "{{tenantId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jane Smith\",\n  \"role\": \"manager\",\n  \"status\": \"active\",\n  \"avatar\": \"https://example.com/avatars/jane.png\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/{{memberId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{memberId}}"]
+            },
+            "description": "Update a user's profile. Admin only.\n\n**Updatable fields (all optional):** `name`, `role`, `status`, `avatar`"
+          }
+        },
+        {
+          "name": "Change Own Password",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-ID",  "value": "{{tenantId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"Admin@123\",\n  \"newPassword\": \"NewAdmin@456\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me/password",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "me", "password"]
+            },
+            "description": "Change the currently authenticated user's own password.\n\n**Required:** `currentPassword`, `newPassword`\n\nAlso activates user status on success."
+          }
+        },
+        {
+          "name": "Delete User (Soft)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "X-Tenant-ID", "value": "{{tenantId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{memberId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{memberId}}"]
+            },
+            "description": "Soft-delete a user. Admin only. Sets `isDeleted: true`, `status: inactive`.\n\nCannot delete your own account."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Project Management",
+      "description": "Manage projects within the current tenant.",
+      "item": [
+        {
+          "name": "List Projects",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Tenant-ID", "value": "{{tenantId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/projects?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects"],
+              "query": [
+                { "key": "page",       "value": "1" },
+                { "key": "limit",      "value": "20" },
+                { "key": "status",     "value": "active", "disabled": true, "description": "active | archived | completed" },
+                { "key": "myProjects", "value": "true",   "disabled": true, "description": "Only projects I'm a member of" }
+              ]
+            },
+            "description": "List projects in the current tenant.\n\n- **Admins**: see all projects\n- **Others**: see only their memberships (or use `myProjects=true`)\n\n**Query Params:** `status`, `myProjects=true`"
+          }
+        },
+        {
+          "name": "Get Project by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Tenant-ID", "value": "{{tenantId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}"]
+            },
+            "description": "Fetch a project with populated `createdBy` and `members`."
+          }
+        },
+        {
+          "name": "Create Project",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "if (pm.response.code === 201) {",
+                "    const b = pm.response.json();",
+                "    if (b.success && b.data && b.data.project) {",
+                "        pm.collectionVariables.set('projectId', b.data.project._id);",
+                "        console.log('projectId saved:', b.data.project._id);",
+                "    }",
+                "}"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-ID",  "value": "{{tenantId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Website Redesign\",\n  \"description\": \"Complete redesign with modern UI/UX\",\n  \"members\": [\"{{memberId}}\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects"]
+            },
+            "description": "Create a project. Admin or Manager only.\n\n**Required:** `name`\n**Optional:** `description`, `members` (array of user IDs in this tenant)\n\nCreator is auto-added as member. Auto-saves `{{projectId}}`."
+          }
+        },
+        {
+          "name": "Update Project",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-ID",  "value": "{{tenantId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Website Redesign v2\",\n  \"description\": \"Updated scope with mobile-first approach\",\n  \"status\": \"active\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}"]
+            },
+            "description": "Update a project. Admin or Manager only.\n\n**Updatable:** `name`, `description`, `status` (`active` | `archived` | `completed`)"
+          }
+        },
+        {
+          "name": "Add Members to Project",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-ID",  "value": "{{tenantId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"memberIds\": [\"{{memberId}}\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/members",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "members"]
+            },
+            "description": "Add users to a project. Admin or Manager only.\n\n**Required:** `memberIds` — array of user ObjectIds (must belong to this tenant)\n\nDuplicates are silently ignored (`$addToSet`)."
+          }
+        },
+        {
+          "name": "Remove Member from Project",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "X-Tenant-ID", "value": "{{tenantId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/members/{{memberId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "members", "{{memberId}}"]
+            },
+            "description": "Remove a user from a project. Admin or Manager only."
+          }
+        },
+        {
+          "name": "Delete Project (Soft)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "X-Tenant-ID", "value": "{{tenantId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}"]
+            },
+            "description": "Soft-delete a project. Admin only.\n\nCascades: all tasks in the project are also soft-deleted."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Task Management",
+      "description": "Tasks are nested under projects: /projects/:projectId/tasks. All endpoints need X-Tenant-ID.",
+      "item": [
+        {
+          "name": "List Tasks",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Tenant-ID", "value": "{{tenantId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/tasks?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "tasks"],
+              "query": [
+                { "key": "page",       "value": "1" },
+                { "key": "limit",      "value": "20" },
+                { "key": "status",     "value": "todo",       "disabled": true, "description": "todo | in-progress | in-review | done" },
+                { "key": "priority",   "value": "high",       "disabled": true, "description": "low | medium | high | critical" },
+                { "key": "assignedTo", "value": "{{userId}}", "disabled": true, "description": "Filter by user ID" },
+                { "key": "mine",       "value": "true",       "disabled": true, "description": "Tasks assigned to current user" },
+                { "key": "overdue",    "value": "true",       "disabled": true, "description": "Past due date and not done" }
+              ]
+            },
+            "description": "List tasks in a project.\n\n**Query Params:**\n- `status`, `priority` — filter by value\n- `assignedTo` — filter by specific user ID\n- `mine=true` — tasks assigned to the current user\n- `overdue=true` — tasks past `dueDate` where `status != done`"
+          }
+        },
+        {
+          "name": "Get Task by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Tenant-ID", "value": "{{tenantId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/tasks/{{taskId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "tasks", "{{taskId}}"]
+            },
+            "description": "Fetch a task with populated `assignedTo`, `createdBy`, and `comments.createdBy`.\n\nIncludes virtual field `isOverdue` (true if `dueDate < now` AND `status != done`)."
+          }
+        },
+        {
+          "name": "Create Task",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "if (pm.response.code === 201) {",
+                "    const b = pm.response.json();",
+                "    if (b.success && b.data && b.data.task) {",
+                "        pm.collectionVariables.set('taskId', b.data.task._id);",
+                "        console.log('taskId saved:', b.data.task._id);",
+                "    }",
+                "}"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-ID",  "value": "{{tenantId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Implement Login Page\",\n  \"description\": \"JWT-based login with email/password and validation\",\n  \"assignedTo\": [\"{{memberId}}\"],\n  \"priority\": \"high\",\n  \"status\": \"todo\",\n  \"dueDate\": \"2026-07-30T00:00:00.000Z\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/tasks",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "tasks"]
+            },
+            "description": "Create a task. Admin or Manager only.\n\n**Required:** `title`\n**Optional:** `description`, `assignedTo` (user ID array), `priority` (default: `medium`), `status` (default: `todo`), `dueDate` (ISO 8601)\n\nAuto-saves `{{taskId}}`."
+          }
+        },
+        {
+          "name": "Update Task (Admin/Manager)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-ID",  "value": "{{tenantId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Implement Login Page — Updated\",\n  \"description\": \"Added OAuth support\",\n  \"assignedTo\": [\"{{memberId}}\"],\n  \"priority\": \"critical\",\n  \"status\": \"in-progress\",\n  \"dueDate\": \"2026-08-15T00:00:00.000Z\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/tasks/{{taskId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "tasks", "{{taskId}}"]
+            },
+            "description": "Update a task (admin/manager). All fields are updatable.\n\n**Employee restriction:** Employees can ONLY send `{ \"status\": \"...\" }` — any other field triggers a 400 error."
+          }
+        },
+        {
+          "name": "Update Task Status (Employee)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-ID",  "value": "{{tenantId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"in-progress\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/tasks/{{taskId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "tasks", "{{taskId}}"]
+            },
+            "description": "Status-only update for employees. Valid values: `todo` → `in-progress` → `in-review` → `done`"
+          }
+        },
+        {
+          "name": "Delete Task (Soft)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "X-Tenant-ID", "value": "{{tenantId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/tasks/{{taskId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "tasks", "{{taskId}}"]
+            },
+            "description": "Soft-delete a task. Admin or Manager only."
+          }
+        },
+        {
+          "name": "Add Comment",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "if (pm.response.code === 201) {",
+                "    const b = pm.response.json();",
+                "    if (b.success && b.data && b.data.comment) {",
+                "        pm.collectionVariables.set('commentId', b.data.comment._id);",
+                "        console.log('commentId saved:', b.data.comment._id);",
+                "    }",
+                "}"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-ID",  "value": "{{tenantId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Started working on the OAuth integration. Will update by EOD.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/tasks/{{taskId}}/comments",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "tasks", "{{taskId}}", "comments"]
+            },
+            "description": "Add a comment to a task. All authenticated roles can comment.\n\n**Required:** `content` (non-empty string)\n\nAuto-saves `{{commentId}}`."
+          }
+        },
+        {
+          "name": "Delete Comment",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "X-Tenant-ID", "value": "{{tenantId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/tasks/{{taskId}}/comments/{{commentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "tasks", "{{taskId}}", "comments", "{{commentId}}"]
+            },
+            "description": "Delete a comment. Users can only delete their **own** comments — the server validates `comment.createdBy === req.userId`."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Role Management",
+      "description": "Manage roles. System roles (isSystem: true) cannot be modified or deleted.",
+      "item": [
+        {
+          "name": "List Roles",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Tenant-ID", "value": "{{tenantId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/roles",
+              "host": ["{{baseUrl}}"],
+              "path": ["roles"]
+            },
+            "description": "List all roles available in the current tenant.\n\nIncludes system roles (`tenantId: null`, `isSystem: true`) and tenant-specific custom roles. Each role includes its populated `permissions`."
+          }
+        },
+        {
+          "name": "Get Role by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Tenant-ID", "value": "{{tenantId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/roles/{{roleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["roles", "{{roleId}}"]
+            },
+            "description": "Fetch a single role with fully populated permissions."
+          }
+        },
+        {
+          "name": "Create Role",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "if (pm.response.code === 201) {",
+                "    const b = pm.response.json();",
+                "    if (b.success && b.data && b.data.role) {",
+                "        pm.collectionVariables.set('roleId', b.data.role._id);",
+                "        console.log('roleId saved:', b.data.role._id);",
+                "    }",
+                "}"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-ID",  "value": "{{tenantId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Tech Lead\",\n  \"description\": \"Technical lead with extended project management access\",\n  \"permissions\": []\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/roles",
+              "host": ["{{baseUrl}}"],
+              "path": ["roles"]
+            },
+            "description": "Create a custom role for the tenant.\n\n**Required:** `name`\n**Optional:** `description`, `permissions` (array of permission ObjectIds — must be global or tenant-specific)\n\nAuto-saves `{{roleId}}`."
+          }
+        },
+        {
+          "name": "Update Role",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-ID",  "value": "{{tenantId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Senior Tech Lead\",\n  \"description\": \"Updated with additional responsibilities\",\n  \"permissions\": [\"{{permissionId}}\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/roles/{{roleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["roles", "{{roleId}}"]
+            },
+            "description": "Update a custom tenant role. System roles return 404.\n\n**Updatable:** `name`, `description`, `permissions`"
+          }
+        },
+        {
+          "name": "Delete Role (Soft)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "X-Tenant-ID", "value": "{{tenantId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/roles/{{roleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["roles", "{{roleId}}"]
+            },
+            "description": "Soft-delete a custom role. System roles cannot be deleted."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Permission Management",
+      "description": "Manage RBAC permissions. System permissions cannot be modified or deleted.",
+      "item": [
+        {
+          "name": "List Permissions",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Tenant-ID", "value": "{{tenantId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/permissions",
+              "host": ["{{baseUrl}}"],
+              "path": ["permissions"],
+              "query": [
+                { "key": "resource", "value": "project", "disabled": true, "description": "Filter by resource name (e.g. project, task, user)" },
+                { "key": "action",   "value": "create",  "disabled": true, "description": "create | read | update | delete | manage" }
+              ]
+            },
+            "description": "List all permissions available in the tenant.\n\nIncludes global system permissions and tenant-specific custom permissions.\n\n**Query Params:** `resource`, `action`"
+          }
+        },
+        {
+          "name": "Get Permission by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Tenant-ID", "value": "{{tenantId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/permissions/{{permissionId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["permissions", "{{permissionId}}"]
+            },
+            "description": "Fetch a single permission by ID."
+          }
+        },
+        {
+          "name": "Create Permission",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "if (pm.response.code === 201) {",
+                "    const b = pm.response.json();",
+                "    if (b.success && b.data && b.data.permission) {",
+                "        pm.collectionVariables.set('permissionId', b.data.permission._id);",
+                "        console.log('permissionId saved:', b.data.permission._id);",
+                "    }",
+                "}"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-ID",  "value": "{{tenantId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"export:reports\",\n  \"description\": \"Permission to export project reports\",\n  \"resource\": \"report\",\n  \"action\": \"create\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/permissions",
+              "host": ["{{baseUrl}}"],
+              "path": ["permissions"]
+            },
+            "description": "Create a custom permission.\n\n**Required:** `name`, `resource`, `action` (`create` | `read` | `update` | `delete` | `manage`)\n**Optional:** `description`\n\nAuto-saves `{{permissionId}}`."
+          }
+        },
+        {
+          "name": "Update Permission",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Tenant-ID",  "value": "{{tenantId}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"export:reports-v2\",\n  \"description\": \"Enhanced report exports\",\n  \"resource\": \"report\",\n  \"action\": \"manage\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/permissions/{{permissionId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["permissions", "{{permissionId}}"]
+            },
+            "description": "Update a custom permission. System permissions return 404.\n\n**Updatable:** `name`, `description`, `resource`, `action`"
+          }
+        },
+        {
+          "name": "Delete Permission (Soft)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "X-Tenant-ID", "value": "{{tenantId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/permissions/{{permissionId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["permissions", "{{permissionId}}"]
+            },
+            "description": "Soft-delete a custom permission. System permissions cannot be deleted."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "description": "Aggregated statistics for the current tenant. Uses MongoDB aggregation pipelines.",
+      "item": [
+        {
+          "name": "Get Dashboard Stats",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Tenant-ID", "value": "{{tenantId}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard",
+              "host": ["{{baseUrl}}"],
+              "path": ["dashboard"]
+            },
+            "description": "Get aggregated statistics scoped to the current tenant.\n\n**Returns:**\n```\nprojects:\n  total, byStatus[]\ntasks:\n  total, byStatus[], byPriority[], overdue (count)\nrecentTasks[]     — 5 most recently created\nupcomingDueTasks[] — due within next 7 days (up to 10)\n```"
+          }
+        }
+      ]
+    }
+  ]
+}
