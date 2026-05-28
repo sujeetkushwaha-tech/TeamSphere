@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "teamsphere-api-v1",
     "name": "TeamSphere API",
-    "description": "Complete API collection for TeamSphere — a multi-tenant SaaS Project Management System (MERN stack).\n\n## Quick Start\n1. Run **[Auth] Register Tenant** to create your first tenant + admin user\n2. Tokens and IDs are auto-saved to collection variables\n3. All protected routes inherit the Bearer token automatically\n\n## Headers Required\n- **Authorization**: Bearer `{{accessToken}}` — auto-injected by collection auth\n- **X-Tenant-ID**: `{{tenantId}}` — required on all tenant-scoped routes (NOT on super-admin routes)\n\n## Roles\n- `super-admin` — Platform level; manages tenants only\n- `admin` — Full access within tenant\n- `manager` — Create/manage projects and tasks\n- `employee` — View; can only update task status\n\n## Response Envelope\nAll responses: `{ success, message, data, [pagination] }`",
+    "description": "Complete API collection for TeamSphere — a multi-tenant SaaS Project Management System (MERN stack).\n\n## Quick Start\n1. Run `npm run seed` in the backend to create the super admin\n2. Use **[Auth] Login (Super Admin)** to get an access token\n3. Use **[Tenant Management] Create Tenant** to provision a new tenant + admin\n4. Use **[Auth] Login (Tenant User)** — tokens and IDs are auto-saved to collection variables\n5. All protected routes inherit the Bearer token automatically\n\n## Headers Required\n- **Authorization**: Bearer `{{accessToken}}` — auto-injected by collection auth\n- **X-Tenant-ID**: `{{tenantId}}` — required on all tenant-scoped routes (NOT on super-admin routes)\n\n## Roles\n- `super-admin` — Platform level; manages tenants only\n- `admin` — Full access within tenant\n- `manager` — Create/manage projects and tasks\n- `employee` — View; can only update task status\n\n## Response Envelope\nAll responses: `{ success, message, data, [pagination] }`",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -57,47 +57,8 @@
   "item": [
     {
       "name": "Auth",
-      "description": "Authentication — register, login, token refresh, profile, logout",
+      "description": "Authentication — login, token refresh, profile, logout",
       "item": [
-        {
-          "name": "Register Tenant",
-          "event": [{
-            "listen": "test",
-            "script": {
-              "type": "text/javascript",
-              "exec": [
-                "if (pm.response.code === 201) {",
-                "    const b = pm.response.json();",
-                "    if (b.success && b.data) {",
-                "        pm.collectionVariables.set('accessToken', b.data.accessToken);",
-                "        pm.collectionVariables.set('refreshToken', b.data.refreshToken);",
-                "        pm.collectionVariables.set('tokenExpiry', String(Date.now() + 14 * 60 * 1000));",
-                "        pm.collectionVariables.set('tenantId', b.data.tenant.id);",
-                "        pm.collectionVariables.set('userId', b.data.user.id);",
-                "        console.log('Registered. tenantId:', b.data.tenant.id, 'userId:', b.data.user.id);",
-                "    }",
-                "    pm.test('Tenant registered', () => pm.expect(b.success).to.be.true);",
-                "}"
-              ]
-            }
-          }],
-          "request": {
-            "auth": { "type": "noauth" },
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"tenantName\": \"Acme Corp\",\n  \"slug\": \"acme-corp\",\n  \"tenantEmail\": \"contact@acme.com\",\n  \"adminName\": \"John Admin\",\n  \"adminEmail\": \"admin@acme.com\",\n  \"adminPassword\": \"Admin@123\"\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/auth/register",
-              "host": ["{{baseUrl}}"],
-              "path": ["auth", "register"]
-            },
-            "description": "Creates a new tenant + initial admin user in one step.\n\n**Body:**\n- `tenantName` — Organization display name\n- `slug` — Unique URL-safe slug (e.g. `acme-corp`)\n- `tenantEmail` — Organization contact email\n- `adminName` / `adminEmail` / `adminPassword` — Admin credentials\n\nAuto-saves `accessToken`, `refreshToken`, `tenantId`, `userId` to collection variables."
-          }
-        },
         {
           "name": "Login (Tenant User)",
           "event": [{

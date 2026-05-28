@@ -111,7 +111,7 @@ Frontend runs at: `http://localhost:5173`
 
 1. Open Postman
 2. Click **Import** → select `TeamSphere_API.postman_collection.json`
-3. The collection includes all 36 endpoints organized in 8 folders
+3. The collection includes all 42 endpoints organized in 8 folders
 
 ### Collection variables (auto-managed)
 
@@ -133,12 +133,14 @@ Frontend runs at: `http://localhost:5173`
 ### Recommended first-time flow
 
 ```
-1. Auth → Register Tenant         (creates tenant + admin, saves all tokens)
-2. User Management → Invite User  (creates a second user, saves memberId)
-3. Project Management → Create Project  (saves projectId)
-4. Task Management → Create Task        (saves taskId)
-5. Task Management → Add Comment        (saves commentId)
-6. Dashboard → Get Dashboard Stats
+1. Auth → Login (Super Admin)           (seed first: npm run seed)
+2. Tenant Management → Create Tenant    (creates tenant + admin)
+3. Auth → Login (Tenant User)           (log in as the new admin, saves all tokens)
+4. User Management → Invite User        (creates a second user, saves memberId)
+5. Project Management → Create Project  (saves projectId)
+6. Task Management → Create Task        (saves taskId)
+7. Task Management → Add Comment        (saves commentId)
+8. Dashboard → Get Dashboard Stats
 ```
 
 ### Token auto-refresh
@@ -194,7 +196,6 @@ The collection pre-request script automatically refreshes the access token when 
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/auth/register` | None | Register tenant + admin |
 | POST | `/auth/login` | None | Login (+ X-Tenant-ID for tenant users) |
 | POST | `/auth/refresh` | None | Refresh access token |
 | GET | `/auth/me` | Bearer | Get current user profile |
