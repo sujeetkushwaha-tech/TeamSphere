@@ -1,0 +1,6 @@
+[submodule "teamsphere_frontend"]
+	path = teamsphere_frontend
+	url = https://github.com/sujeetkushwaha-tech/TeamSphere_Frontend.git
+[submodule "teamsphere_backend"]
+	path = teamsphere_backend
+	url = https://github.com/sujeetkushwaha-tech/TeamSphere_Backend.git
