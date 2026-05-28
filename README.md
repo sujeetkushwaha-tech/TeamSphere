@@ -15,7 +15,6 @@ TeamSphere is a **multi-tenant SaaS Project Management System**. Multiple organi
 | Database | MongoDB + Mongoose |
 | Auth | JWT (access + refresh tokens) |
 | Frontend | React 19 + Vite + Redux Toolkit + MUI |
-| Email | Nodemailer (SMTP) |
 | Docs | Swagger (auto-generated) |
 
 ---
